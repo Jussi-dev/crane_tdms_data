@@ -156,3 +156,4 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+last_selection.json

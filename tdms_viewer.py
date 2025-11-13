@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import json
 from nptdms import TdmsFile
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -17,6 +18,7 @@ class TDMSViewer(tk.Tk):
         self.all_channels = []  # Store all channel display names for filtering
         self.time_column = None
         self.time_column_name = None
+        self.settings_file = os.path.join(os.getcwd(), "last_selection.json")
         
         self.create_widgets()
     
@@ -195,6 +197,9 @@ class TDMSViewer(tk.Tk):
         # Store all channels for filtering
         self.all_channels = [self.channels_data[channel_id]['display_name'] for channel_id in self.channels_data.keys()]
         
+        # Load and apply last selection if available
+        self.load_last_selection()
+        
         # Enable export button if channels are available
         if self.channels_data:
             self.export_button.config(state=tk.NORMAL)
@@ -349,6 +354,9 @@ class TDMSViewer(tk.Tk):
             df = pd.DataFrame(export_data)
             df.to_csv(output_file, index=False)
             
+            # Save current selection for next time
+            self.save_last_selection()
+            
             messagebox.showinfo("Export Complete", 
                               f"Successfully exported {len(export_data)} columns to:\n{output_file}")
             self.status_var.set(f"Export complete - {len(export_data)} columns saved")
@@ -356,6 +364,58 @@ class TDMSViewer(tk.Tk):
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export CSV:\n{str(e)}")
             self.status_var.set("Export failed")
+    
+    def save_last_selection(self):
+        """Save the currently selected channels to a JSON file"""
+        try:
+            selected_channels = []
+            for i in range(self.selected_listbox.size()):
+                selected_channels.append(self.selected_listbox.get(i))
+            
+            settings = {
+                "last_selected_channels": selected_channels,
+                "include_time_column": self.include_time_var.get()
+            }
+            
+            with open(self.settings_file, 'w') as f:
+                json.dump(settings, f, indent=2)
+                
+        except Exception as e:
+            print(f"Warning: Could not save selection: {e}")
+    
+    def load_last_selection(self):
+        """Load and apply the last selected channels from JSON file"""
+        try:
+            if not os.path.exists(self.settings_file):
+                return
+                
+            with open(self.settings_file, 'r') as f:
+                settings = json.load(f)
+            
+            last_channels = settings.get("last_selected_channels", [])
+            include_time = settings.get("include_time_column", True)
+            
+            # Apply time column setting
+            self.include_time_var.set(include_time)
+            
+            # Apply channel selection
+            for channel_name in last_channels:
+                # Check if this channel exists in current file
+                for i in range(self.available_listbox.size()):
+                    if self.available_listbox.get(i) == channel_name:
+                        # Add to selected list if not already there
+                        if channel_name not in [self.selected_listbox.get(j) for j in range(self.selected_listbox.size())]:
+                            self.selected_listbox.insert(tk.END, channel_name)
+                        break
+            
+            self.update_status()
+            
+            if last_channels:
+                restored_count = self.selected_listbox.size()
+                self.status_var.set(f"Restored {restored_count} previously selected channels")
+                
+        except Exception as e:
+            print(f"Warning: Could not load last selection: {e}")
 
 
 
