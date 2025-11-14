@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import json
+from datetime import datetime, timedelta
 from nptdms import TdmsFile
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -115,10 +116,20 @@ class TDMSViewer(tk.Tk):
         ttk.Checkbutton(export_frame, text="Include time/index column", 
                        variable=self.include_time_var).grid(row=0, column=0, sticky=tk.W, pady=2)
         
+        # Calculated timestamp column option
+        self.include_timestamp_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(export_frame, text="Create calculated timestamp column (from MachineStatus - Timestamp)", 
+                       variable=self.include_timestamp_var).grid(row=1, column=0, sticky=tk.W, pady=2)
+        
+        # Include group names in column headers option
+        self.include_group_names_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(export_frame, text="Include group names in column headers (e.g., 'Group_ChannelName' vs 'ChannelName')", 
+                       variable=self.include_group_names_var).grid(row=2, column=0, sticky=tk.W, pady=2)
+        
         # Export button
         self.export_button = ttk.Button(export_frame, text="Export Selected Channels to CSV", 
                                       command=self.export_to_csv, state=tk.DISABLED)
-        self.export_button.grid(row=1, column=0, pady=5)
+        self.export_button.grid(row=3, column=0, pady=5)
         
         # Status bar
         self.status_var = tk.StringVar(value="Ready - Please select a TDMS file")
@@ -343,6 +354,12 @@ class TDMSViewer(tk.Tk):
             if self.include_time_var.get() and self.time_column is not None:
                 export_data[self.time_column_name] = self.time_column
             
+            # Add calculated timestamp column if requested
+            if self.include_timestamp_var.get():
+                timestamp_data = self.create_timestamp_column()
+                if timestamp_data is not None:
+                    export_data["Calculated_Timestamp"] = timestamp_data
+            
             # Add selected channels
             channel_ids = list(self.channels_data.keys())
             for i in range(self.selected_listbox.size()):
@@ -351,9 +368,22 @@ class TDMSViewer(tk.Tk):
                 # Find corresponding channel ID
                 for channel_id, channel_info in self.channels_data.items():
                     if channel_info['display_name'] == display_name:
-                        # Clean column name for CSV
-                        clean_name = display_name.replace("/", "_").replace(" ", "_")
-                        clean_name = clean_name.replace(".", "_").replace("-", "_")
+                        # Create column name based on user preference
+                        if self.include_group_names_var.get():
+                            # Use full display name: "Group - Channel"
+                            clean_name = display_name.replace("/", "_").replace(" ", "_")
+                            clean_name = clean_name.replace(".", "_").replace("-", "_")
+                        else:
+                            # Use only channel name: extract just the channel part
+                            # Split by " - " and take the last part (channel name)
+                            parts = display_name.split(" - ")
+                            if len(parts) > 1:
+                                channel_only_name = parts[-1]  # Get the last part (channel name)
+                            else:
+                                channel_only_name = display_name  # Fallback to full name
+                            clean_name = channel_only_name.replace("/", "_").replace(" ", "_")
+                            clean_name = clean_name.replace(".", "_").replace("-", "_")
+                        
                         export_data[clean_name] = channel_info['data']
                         break
             
@@ -391,6 +421,8 @@ class TDMSViewer(tk.Tk):
             settings = {
                 "last_selected_channels": selected_channels,
                 "include_time_column": self.include_time_var.get(),
+                "include_timestamp_column": self.include_timestamp_var.get(),
+                "include_group_names": self.include_group_names_var.get(),
                 "last_import_directory": current_settings.get("last_import_directory", os.getcwd())
             }
             
@@ -411,9 +443,17 @@ class TDMSViewer(tk.Tk):
             
             last_channels = settings.get("last_selected_channels", [])
             include_time = settings.get("include_time_column", True)
+            include_timestamp = settings.get("include_timestamp_column", False)
+            include_group_names = settings.get("include_group_names", True)
             
             # Apply time column setting
             self.include_time_var.set(include_time)
+            
+            # Apply timestamp column setting
+            self.include_timestamp_var.set(include_timestamp)
+            
+            # Apply group names setting
+            self.include_group_names_var.set(include_group_names)
             
             # Apply channel selection
             for channel_name in last_channels:
@@ -471,6 +511,49 @@ class TDMSViewer(tk.Tk):
         
         # Default to current working directory
         return os.getcwd()
+    
+    def create_timestamp_column(self):
+        """Create a calculated timestamp column from MachineStatus - Timestamp channel"""
+        try:
+            # Look for the MachineStatus - Timestamp channel
+            timestamp_channel_name = "MachineStatus - Timestamp"
+            timestamp_data = None
+            
+            # Search in channels_data for the timestamp channel
+            for channel_id, channel_info in self.channels_data.items():
+                if channel_info['display_name'] == timestamp_channel_name:
+                    timestamp_data = channel_info['data']
+                    break
+            
+            if timestamp_data is None:
+                print(f"Warning: '{timestamp_channel_name}' channel not found")
+                return None
+            
+            # Convert Excel epoch time to readable timestamps
+            # Excel epoch starts at 1900-01-01, but has a leap year bug (treats 1900 as leap year)
+            # So we need to subtract 2 days (1900-01-01 to 1899-12-30) and account for the bug
+            excel_epoch = datetime(1899, 12, 30)  # Excel's actual epoch after accounting for the bug
+            
+            readable_timestamps = []
+            for excel_time in timestamp_data:
+                try:
+                    # Convert Excel serial date to datetime
+                    if pd.isna(excel_time) or excel_time == 0:
+                        readable_timestamps.append("")
+                    else:
+                        # Excel time is in days since epoch
+                        python_datetime = excel_epoch + timedelta(days=float(excel_time))
+                        # Format as ISO string with milliseconds
+                        readable_timestamps.append(python_datetime.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
+                except (ValueError, TypeError, OverflowError) as e:
+                    # Handle invalid timestamp values
+                    readable_timestamps.append(f"Invalid: {excel_time}")
+            
+            return readable_timestamps
+            
+        except Exception as e:
+            print(f"Error creating timestamp column: {e}")
+            return None
 
 
 
