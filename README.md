@@ -4,28 +4,35 @@ A user-friendly GUI application for selecting and exporting specific channels fr
 
 ## 🚀 Features
 
+### 📁 Multi-File Processing
+- **Multiple TDMS file support**: Select and process multiple files as one continuous dataset
+- **File management interface**: Add, remove, and organize TDMS files with intuitive controls
+- **Chronological data merging**: Automatically concatenate data from sequential time spans
+- **Smart filename generation**: Export names reflect time range from earliest to latest file
+
 ### 🎯 Smart Channel Selection
-- Interactive file browser for TDMS files
-- Real-time channel filtering and search
+- Real-time channel filtering and search across all loaded files
 - Dual-pane interface (Available ↔ Selected channels)
 - Bulk operations (Add All/Remove All)
+- Unified channel view treating multiple files as continuous dataset
 
 ### 📊 Flexible Export Options
-- Include/exclude time/index columns
-- Calculate readable timestamps from Excel epoch time
+- Include/exclude time/index columns with automatic merging across files
+- Calculate readable timestamps from Excel epoch time (works with concatenated data)
 - Choose to include/exclude group names in headers
-- Automatic export folder management
+- Automatic export folder management with intelligent naming
 
 ### 💾 Intelligent Memory
-- Remembers your last channel selections
-- Saves export preferences between sessions
+- Remembers your last channel selections across sessions
+- Saves export preferences between sessions  
 - Recalls last used import directory
+- Maintains settings for multi-file workflows
 
 ### ⚡ User Experience
-- Clean, resizable interface
-- Real-time status updates
-- Error handling with helpful messages
-- Fast channel filtering and selection
+- Clean, resizable interface optimized for multi-file workflows
+- Real-time status updates showing file count and channel information
+- Comprehensive error handling with helpful messages
+- Fast channel filtering and selection across combined datasets
 
 ## 📋 Quick Start
 
@@ -43,20 +50,31 @@ A user-friendly GUI application for selecting and exporting specific channels fr
 
 ### Usage
 
-1. Run the application:
+1. **Run the application**:
    ```bash
    python tdms_viewer.py
    ```
 
-2. **Select TDMS File**: Click "Browse..." to select a TDMS file
+2. **Add TDMS Files**: 
+   - Click "Add TDMS Files..." to select one or multiple TDMS files
+   - Files from the same system across different time periods are supported
+   - Use "Remove Selected" or "Clear All" to manage your file list
 
-3. **Filter Channels**: Use the filter box to find specific channels
+3. **Filter Channels**: Use the filter box to find specific channels across all files
 
 4. **Select Channels**: Use Add/Remove buttons to choose channels for export
+   - Channels with the same name from different files are automatically combined
+   - View shows unified channel list representing continuous timeline
 
 5. **Configure Export**: Set your preferred export options
+   - Include time/index columns (automatically merged across files)
+   - Create calculated timestamps from combined data
+   - Choose group name inclusion preferences
 
 6. **Export**: Click "Export Selected Channels to CSV"
+   - Single file exports use original filename with `_export` suffix
+   - Multiple files create `earliest_to_latest_export.csv` format
+   - All data is concatenated chronologically in output
 
 ## 📖 Export Options Guide
 
@@ -65,7 +83,8 @@ A user-friendly GUI application for selecting and exporting specific channels fr
 
 ### Calculated Timestamp  
 - **Create calculated timestamp column**: Converts Excel epoch timestamps to readable format
-- Automatically finds "MachineStatus - Timestamp" channel
+- Automatically finds "MachineStatus - Timestamp" channel across all loaded files
+- Works with concatenated data from multiple files for continuous timeline
 - Output format: `YYYY-MM-DD HH:MM:SS.mmm`
 
 ### Column Naming
@@ -76,10 +95,11 @@ A user-friendly GUI application for selecting and exporting specific channels fr
 
 ```
 crane_tdms_data/
-├── tdms_viewer.py          # Main application
+├── tdms_viewer.py          # Main application with multi-file support
 ├── .gitignore             # Git ignore patterns  
-├── CHANGELOG.md           # Version history
-├── README.md              # This file
+├── CHANGELOG.md           # Version history and feature documentation
+├── README.md              # This file - comprehensive usage guide
+├── CONTRIBUTING.md        # Development guidelines and workflow
 ├── export/               # CSV output directory (auto-created)
 └── last_selection.json    # User preferences (auto-generated)
 ```
@@ -124,15 +144,16 @@ git checkout main
 ## 🐛 Known Issues
 
 - Calculated timestamp only works with "MachineStatus - Timestamp" channel
-- Large TDMS files may take time to load all channel data
-- Duplicate column names possible when group names are excluded
+- Large TDMS files may take time to load all channel data (affects multiple files)
+- Very large datasets from multiple files may consume significant memory
+- Files should have consistent channel structures for optimal merging
 
-## 🔮 Upcoming Features (Development Branch)
+## 🔮 Upcoming Features (Future Development)
 
-- Support for multiple TDMS files input
-- Batch processing capabilities  
-- Enhanced file management interface
-- Improved performance for large datasets
+- Progress indicators for large multi-file operations
+- Memory optimization for very large datasets  
+- Advanced file validation and compatibility checking
+- Custom data alignment options for mismatched time bases
 
 ## 📄 License
 

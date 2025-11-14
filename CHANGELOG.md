@@ -8,24 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Support for multiple TDMS files input with file selection dialog
-- File list management interface with add/remove capabilities
-- Automatic data concatenation from multiple files (chronological order)
-- Smart export filename generation using earliest and latest file names
-- Time column concatenation across multiple files for continuous timeline
-- Channel data merging from same system across different time spans
+- **Multi-file TDMS support**: Select and process multiple TDMS files as one continuous dataset
+- **File management interface**: Add, remove, and manage multiple TDMS files with dedicated UI
+- **Automatic data concatenation**: Chronologically combine channel data from multiple files
+- **Smart export naming**: Generate filenames using earliest and latest file timestamps
+- **Continuous timeline**: Merge time columns across files for uninterrupted data flow
+- **System continuity**: Treat files from same system as sequential time spans
 
 ### Changed
-- File selection UI replaced with multi-file management interface
-- Multiple TDMS files now treated as one continuous dataset
-- Export naming uses earliest file with time range indication
-- Data processing concatenates channels from all files chronologically
-- Channel display simplified since files represent continuous data
+- **File selection workflow**: Multi-file interface replaces single file browser
+- **Data processing logic**: Multiple files processed as unified continuous dataset  
+- **Export filename format**: Uses `earliest_to_latest_export.csv` for time ranges
+- **Channel identification**: Simplified naming since files represent continuous operation
+- **User interface layout**: Enhanced file management section with list and controls
 
 ### Deprecated
 
 ### Removed
-- Single file selection interface (replaced with multi-file support)
+- Single file selection interface (replaced with comprehensive multi-file support)
 
 ### Fixed
 
