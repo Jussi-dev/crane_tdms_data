@@ -129,8 +129,12 @@ class TDMSViewer(tk.Tk):
 
     def select_file(self):
         """Select and load a TDMS file"""
+        # Get the last used directory or default to current working directory
+        initial_dir = self.get_last_import_directory()
+        
         tdms_path = filedialog.askopenfilename(
             title="Select TDMS File",
+            initialdir=initial_dir,
             filetypes=[("TDMS files", "*.tdms"), ("All files", "*.*")]
         )
         
@@ -145,6 +149,9 @@ class TDMSViewer(tk.Tk):
                 
                 # Extract channels and populate the available channels list
                 self.load_channels()
+                
+                # Save the directory for next time
+                self.save_last_import_directory(os.path.dirname(tdms_path))
                 
                 self.status_var.set(f"Loaded: {os.path.basename(tdms_path)} - {len(self.channels_data)} channels found")
                 
@@ -372,9 +379,19 @@ class TDMSViewer(tk.Tk):
             for i in range(self.selected_listbox.size()):
                 selected_channels.append(self.selected_listbox.get(i))
             
+            # Get current settings if file exists
+            current_settings = {}
+            if os.path.exists(self.settings_file):
+                try:
+                    with open(self.settings_file, 'r') as f:
+                        current_settings = json.load(f)
+                except:
+                    pass
+            
             settings = {
                 "last_selected_channels": selected_channels,
-                "include_time_column": self.include_time_var.get()
+                "include_time_column": self.include_time_var.get(),
+                "last_import_directory": current_settings.get("last_import_directory", os.getcwd())
             }
             
             with open(self.settings_file, 'w') as f:
@@ -416,6 +433,44 @@ class TDMSViewer(tk.Tk):
                 
         except Exception as e:
             print(f"Warning: Could not load last selection: {e}")
+    
+    def save_last_import_directory(self, directory):
+        """Save the last used import directory"""
+        try:
+            # Load existing settings
+            settings = {}
+            if os.path.exists(self.settings_file):
+                try:
+                    with open(self.settings_file, 'r') as f:
+                        settings = json.load(f)
+                except:
+                    pass
+            
+            # Update import directory
+            settings["last_import_directory"] = directory
+            
+            # Save back to file
+            with open(self.settings_file, 'w') as f:
+                json.dump(settings, f, indent=2)
+                
+        except Exception as e:
+            print(f"Warning: Could not save import directory: {e}")
+    
+    def get_last_import_directory(self):
+        """Get the last used import directory or return current working directory"""
+        try:
+            if os.path.exists(self.settings_file):
+                with open(self.settings_file, 'r') as f:
+                    settings = json.load(f)
+                    saved_dir = settings.get("last_import_directory")
+                    # Check if the saved directory still exists
+                    if saved_dir and os.path.exists(saved_dir):
+                        return saved_dir
+        except Exception as e:
+            print(f"Warning: Could not load import directory: {e}")
+        
+        # Default to current working directory
+        return os.getcwd()
 
 
 
