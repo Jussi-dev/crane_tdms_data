@@ -9,7 +9,7 @@ from tkinter import filedialog, messagebox, ttk
 class TDMSViewer(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("TDMS Channel Selector & CSV Converter")
+        self.title("TDMS Channel Selector & CSV Converter v1.1.0")
         self.geometry("900x700")
         self.resizable(True, True)
         

@@ -8,12 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [1.1.0] - 2025-11-14
+
+### Added
 - **Multi-file TDMS support**: Select and process multiple TDMS files as one continuous dataset
 - **File management interface**: Add, remove, and manage multiple TDMS files with dedicated UI
 - **Automatic data concatenation**: Chronologically combine channel data from multiple files
 - **Smart export naming**: Generate filenames using earliest and latest file timestamps
 - **Continuous timeline**: Merge time columns across files for uninterrupted data flow
 - **System continuity**: Treat files from same system as sequential time spans
+- **Comprehensive documentation**: Added CHANGELOG.md, README.md, and CONTRIBUTING.md
 
 ### Changed
 - **File selection workflow**: Multi-file interface replaces single file browser
@@ -22,14 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Channel identification**: Simplified naming since files represent continuous operation
 - **User interface layout**: Enhanced file management section with list and controls
 
-### Deprecated
-
 ### Removed
 - Single file selection interface (replaced with comprehensive multi-file support)
-
-### Fixed
-
-### Security
 
 ## [1.0.0] - 2025-11-14
 
