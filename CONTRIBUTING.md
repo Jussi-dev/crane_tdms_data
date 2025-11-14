@@ -31,7 +31,7 @@ Thank you for your interest in contributing to the TDMS Channel Selector project
 - **`hotfix/*`**: Critical fixes for production issues
 
 ### Current Development
-- **`feature/multi-file-support`**: Adding support for multiple TDMS files
+- 
 
 ### Workflow
 
