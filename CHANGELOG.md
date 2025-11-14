@@ -8,15 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Support for multiple TDMS files input
-- Batch processing capabilities
-- File list management interface
+- Support for multiple TDMS files input with file selection dialog
+- File list management interface with add/remove capabilities
+- Automatic data concatenation from multiple files (chronological order)
+- Smart export filename generation using earliest and latest file names
+- Time column concatenation across multiple files for continuous timeline
+- Channel data merging from same system across different time spans
 
 ### Changed
+- File selection UI replaced with multi-file management interface
+- Multiple TDMS files now treated as one continuous dataset
+- Export naming uses earliest file with time range indication
+- Data processing concatenates channels from all files chronologically
+- Channel display simplified since files represent continuous data
 
 ### Deprecated
 
 ### Removed
+- Single file selection interface (replaced with multi-file support)
 
 ### Fixed
 

@@ -14,7 +14,7 @@ class TDMSViewer(tk.Tk):
         self.resizable(True, True)
         
         # Initialize variables
-        self.tdms_file = None
+        self.tdms_files = []  # List to store multiple TDMS files
         self.channels_data = {}
         self.all_channels = []  # Store all channel display names for filtering
         self.time_column = None
@@ -39,10 +39,33 @@ class TDMSViewer(tk.Tk):
         file_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
         file_frame.columnconfigure(1, weight=1)
         
-        ttk.Label(file_frame, text="TDMS File:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.file_label = ttk.Label(file_frame, text="No file selected", foreground="gray")
-        self.file_label.grid(row=0, column=1, sticky="ew", padx=(0, 5))
-        ttk.Button(file_frame, text="Browse...", command=self.select_file).grid(row=0, column=2, sticky=tk.E)
+        # File selection buttons
+        button_subframe = ttk.Frame(file_frame)
+        button_subframe.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 5))
+        
+        ttk.Button(button_subframe, text="Add TDMS Files...", command=self.add_files).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_subframe, text="Clear All", command=self.clear_files).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Files list with scrollbar
+        files_list_frame = ttk.Frame(file_frame)
+        files_list_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 5))
+        files_list_frame.columnconfigure(0, weight=1)
+        
+        ttk.Label(files_list_frame, text="Selected Files:").grid(row=0, column=0, sticky=tk.W, pady=(0, 2))
+        
+        list_container = ttk.Frame(files_list_frame)
+        list_container.grid(row=1, column=0, sticky="ew")
+        list_container.columnconfigure(0, weight=1)
+        
+        self.files_listbox = tk.Listbox(list_container, height=4, selectmode=tk.EXTENDED)
+        self.files_listbox.grid(row=0, column=0, sticky="ew")
+        
+        files_scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=self.files_listbox.yview)
+        files_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.files_listbox.configure(yscrollcommand=files_scrollbar.set)
+        
+        # Remove selected files button
+        ttk.Button(files_list_frame, text="Remove Selected", command=self.remove_selected_files).grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
         
         # Channel selection section
         channels_frame = ttk.LabelFrame(main_frame, text="Channel Selection", padding="5")
@@ -138,41 +161,93 @@ class TDMSViewer(tk.Tk):
 
 
 
-    def select_file(self):
-        """Select and load a TDMS file"""
+    def add_files(self):
+        """Add TDMS files to the processing list"""
         # Get the last used directory or default to current working directory
         initial_dir = self.get_last_import_directory()
         
-        tdms_path = filedialog.askopenfilename(
-            title="Select TDMS File",
+        file_paths = filedialog.askopenfilenames(
+            title="Select TDMS Files",
             initialdir=initial_dir,
             filetypes=[("TDMS files", "*.tdms"), ("All files", "*.*")]
         )
         
-        if tdms_path:
+        if file_paths:
             try:
-                self.status_var.set("Loading TDMS file...")
+                self.status_var.set("Loading TDMS files...")
                 self.update()
                 
-                # Load the TDMS file
-                self.tdms_file = TdmsFile.read(tdms_path)
-                self.file_label.config(text=os.path.basename(tdms_path), foreground="black")
-                
-                # Extract channels and populate the available channels list
-                self.load_channels()
+                # Add new files to the list (avoid duplicates)
+                added_count = 0
+                for file_path in file_paths:
+                    if file_path not in [f['path'] for f in self.tdms_files]:
+                        # Load and validate the TDMS file
+                        tdms_file = TdmsFile.read(file_path)
+                        
+                        self.tdms_files.append({
+                            'path': file_path,
+                            'name': os.path.basename(file_path),
+                            'tdms_obj': tdms_file
+                        })
+                        
+                        # Add to listbox
+                        self.files_listbox.insert(tk.END, os.path.basename(file_path))
+                        added_count += 1
                 
                 # Save the directory for next time
-                self.save_last_import_directory(os.path.dirname(tdms_path))
+                if file_paths:
+                    self.save_last_import_directory(os.path.dirname(file_paths[0]))
                 
-                self.status_var.set(f"Loaded: {os.path.basename(tdms_path)} - {len(self.channels_data)} channels found")
+                # Reload channels from all files
+                self.load_channels()
+                
+                if added_count > 0:
+                    self.status_var.set(f"Added {added_count} files. Total: {len(self.tdms_files)} files, {len(self.channels_data)} channels found")
+                else:
+                    self.status_var.set(f"No new files added. Total: {len(self.tdms_files)} files")
                 
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to load TDMS file:\n{str(e)}")
-                self.status_var.set("Error loading file")
+                messagebox.showerror("Error", f"Failed to load TDMS files:\n{str(e)}")
+                self.status_var.set("Error loading files")
+    
+    def clear_files(self):
+        """Clear all selected files"""
+        self.tdms_files.clear()
+        self.files_listbox.delete(0, tk.END)
+        
+        # Clear channels data
+        self.channels_data.clear()
+        self.available_listbox.delete(0, tk.END)
+        self.selected_listbox.delete(0, tk.END)
+        self.all_channels.clear()
+        
+        # Disable export button
+        self.export_button.config(state=tk.DISABLED)
+        
+        self.status_var.set("All files cleared")
+    
+    def remove_selected_files(self):
+        """Remove selected files from the list"""
+        selection = self.files_listbox.curselection()
+        if not selection:
+            return
+        
+        # Remove in reverse order to maintain indices
+        for index in reversed(selection):
+            self.files_listbox.delete(index)
+            if index < len(self.tdms_files):
+                self.tdms_files.pop(index)
+        
+        # Reload channels from remaining files
+        if self.tdms_files:
+            self.load_channels()
+            self.status_var.set(f"Files removed. Remaining: {len(self.tdms_files)} files, {len(self.channels_data)} channels")
+        else:
+            self.clear_files()
                 
     def load_channels(self):
-        """Load channels from the TDMS file and populate the available channels list"""
-        if not self.tdms_file:
+        """Load channels from all TDMS files and populate the available channels list"""
+        if not self.tdms_files:
             return
             
         # Clear previous data
@@ -180,40 +255,72 @@ class TDMSViewer(tk.Tk):
         self.available_listbox.delete(0, tk.END)
         self.selected_listbox.delete(0, tk.END)
         
-        # Extract time column (if available)
+        # Sort files by name (assuming chronological naming)
+        sorted_files = sorted(self.tdms_files, key=lambda x: x['name'])
+        
+        # Extract time column (if available) and concatenate data from all files
         self.time_column = None
         self.time_column_name = None
         
-        # Collect all channels
-        for group in self.tdms_file.groups():
-            for channel in group.channels():
-                # Handle time column only once
-                if self.time_column is None:
-                    try:
-                        self.time_column = channel.time_track()
-                        self.time_column_name = "Time"
-                    except (KeyError, AttributeError):
-                        # Fallback to index if no time track available
-                        if len(channel) > 0:
-                            self.time_column = list(range(len(channel)))
-                            self.time_column_name = "Index"
-                
-                # Create unique channel identifier and display name
-                channel_id = f"{group.name}/{channel.name}"
-                display_name = f"{group.name} - {channel.name}"
-                
-                # Store channel data
-                self.channels_data[channel_id] = {
-                    'channel': channel,
-                    'display_name': display_name,
-                    'data': channel[:]
-                }
-                
-                # Add to available channels list
-                self.available_listbox.insert(tk.END, display_name)
+        # Dictionary to collect data from all files for each channel
+        combined_channels = {}
+        
+        # Process all files in chronological order
+        for file_info in sorted_files:
+            tdms_file = file_info['tdms_obj']
+            file_name = file_info['name']
+            
+            # Collect all channels from this file
+            for group in tdms_file.groups():
+                for channel in group.channels():
+                    # Handle time column - concatenate from all files (do this once per file)
+                    if channel == list(group.channels())[0]:  # First channel of each group
+                        try:
+                            time_data = channel.time_track()
+                            if self.time_column is None:
+                                self.time_column = list(time_data)
+                                self.time_column_name = "Time"
+                            else:
+                                # Append time data from this file
+                                self.time_column.extend(time_data)
+                        except (KeyError, AttributeError):
+                            # Fallback to index if no time track available
+                            if self.time_column is None and len(channel) > 0:
+                                self.time_column = list(range(len(channel)))
+                                self.time_column_name = "Index"
+                            elif self.time_column is not None and len(channel) > 0:
+                                # Extend index for additional data
+                                start_idx = len(self.time_column)
+                                self.time_column.extend(range(start_idx, start_idx + len(channel)))
+                    
+                    # Create channel identifier (without file name since we're combining)
+                    channel_id = f"{group.name}/{channel.name}"
+                    display_name = f"{group.name} - {channel.name}"
+                    
+                    # Collect data from this file
+                    if channel_id not in combined_channels:
+                        combined_channels[channel_id] = {
+                            'display_name': display_name,
+                            'data': list(channel[:]),
+                            'group_name': group.name,
+                            'channel_name': channel.name,
+                            'files_count': 1
+                        }
+                    else:
+                        # Append data from this file to existing channel
+                        combined_channels[channel_id]['data'].extend(channel[:])
+                        combined_channels[channel_id]['files_count'] += 1
+        
+        # Store the combined channel data
+        self.channels_data = combined_channels
+        
+        # Add channels to available list (sorted by display name)
+        sorted_channels = sorted(combined_channels.items(), key=lambda x: x[1]['display_name'])
+        for channel_id, channel_info in sorted_channels:
+            self.available_listbox.insert(tk.END, channel_info['display_name'])
                 
         # Store all channels for filtering
-        self.all_channels = [self.channels_data[channel_id]['display_name'] for channel_id in self.channels_data.keys()]
+        self.all_channels = [channel_info['display_name'] for channel_info in combined_channels.values()]
         
         # Load and apply last selection if available
         self.load_last_selection()
@@ -324,10 +431,19 @@ class TDMSViewer(tk.Tk):
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
             
-        # Generate default filename based on TDMS file name
-        if hasattr(self, 'tdms_file') and self.file_label.cget('text') != "No file selected":
-            base_name = os.path.splitext(self.file_label.cget('text'))[0]
-            default_filename = f"{base_name}_export.csv"
+        # Generate default filename based on earliest TDMS file
+        if self.tdms_files:
+            # Sort files by name and use the earliest (first) one for naming
+            sorted_files = sorted(self.tdms_files, key=lambda x: x['name'])
+            base_name = os.path.splitext(sorted_files[0]['name'])[0]
+            
+            if len(self.tdms_files) == 1:
+                default_filename = f"{base_name}_export.csv"
+            else:
+                # Multiple files: indicate time range
+                last_file = sorted_files[-1]['name']
+                last_base = os.path.splitext(last_file)[0]
+                default_filename = f"{base_name}_to_{last_base}_export.csv"
         else:
             default_filename = "tdms_export.csv"
         
@@ -374,14 +490,8 @@ class TDMSViewer(tk.Tk):
                             clean_name = display_name.replace("/", "_").replace(" ", "_")
                             clean_name = clean_name.replace(".", "_").replace("-", "_")
                         else:
-                            # Use only channel name: extract just the channel part
-                            # Split by " - " and take the last part (channel name)
-                            parts = display_name.split(" - ")
-                            if len(parts) > 1:
-                                channel_only_name = parts[-1]  # Get the last part (channel name)
-                            else:
-                                channel_only_name = display_name  # Fallback to full name
-                            clean_name = channel_only_name.replace("/", "_").replace(" ", "_")
+                            # Use only channel name
+                            clean_name = channel_info['channel_name'].replace("/", "_").replace(" ", "_")
                             clean_name = clean_name.replace(".", "_").replace("-", "_")
                         
                         export_data[clean_name] = channel_info['data']
@@ -515,18 +625,19 @@ class TDMSViewer(tk.Tk):
     def create_timestamp_column(self):
         """Create a calculated timestamp column from MachineStatus - Timestamp channel"""
         try:
-            # Look for the MachineStatus - Timestamp channel
-            timestamp_channel_name = "MachineStatus - Timestamp"
+            # Look for the MachineStatus - Timestamp channel (combined data)
             timestamp_data = None
             
             # Search in channels_data for the timestamp channel
             for channel_id, channel_info in self.channels_data.items():
-                if channel_info['display_name'] == timestamp_channel_name:
+                # Check if this channel contains "MachineStatus - Timestamp" 
+                if ("MachineStatus" in channel_info['group_name'] and 
+                    "Timestamp" in channel_info['channel_name']):
                     timestamp_data = channel_info['data']
                     break
             
             if timestamp_data is None:
-                print(f"Warning: '{timestamp_channel_name}' channel not found")
+                print(f"Warning: MachineStatus - Timestamp channel not found")
                 return None
             
             # Convert Excel epoch time to readable timestamps
