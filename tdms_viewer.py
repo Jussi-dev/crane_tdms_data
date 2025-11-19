@@ -18,7 +18,7 @@ import queue
 class TDMSViewer(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("TDMS Channel Selector & CSV Converter v1.2.0-dev")
+        self.title("TDMS Channel Selector & CSV Converter v1.3.0")
         self.geometry("1200x1000")
         self.resizable(True, True)
         
@@ -35,6 +35,12 @@ class TDMSViewer(tk.Tk):
         self.max_preview_points = 10000
         self._update_timer = None
         self.preview_queue = queue.Queue()
+        
+        # Timespan control variables
+        self.timespan_enabled = False
+        self.timespan_start = ""
+        self.timespan_end = ""
+        self.timespan_use_for_export = False
         
         self.create_widgets()
     
@@ -204,10 +210,12 @@ class TDMSViewer(tk.Tk):
         # Preview controls
         controls_frame = ttk.Frame(preview_frame)
         controls_frame.grid(row=0, column=0, sticky="ew", pady=(0, 5))
-        controls_frame.columnconfigure(2, weight=1)
+        # Configure column weights to distribute space properly
+        controls_frame.columnconfigure(2, weight=1)  # Channel combo gets extra space
+        controls_frame.columnconfigure(6, weight=1)  # Last column gets remaining space
         
         # Preview enable/disable checkbox
-        self.preview_enabled_var = tk.BooleanVar(value=True)
+        self.preview_enabled_var = tk.BooleanVar(value=False)
         preview_checkbox = ttk.Checkbutton(controls_frame, text="Enable Preview", 
                                          variable=self.preview_enabled_var,
                                          command=self.toggle_preview)
@@ -230,10 +238,57 @@ class TDMSViewer(tk.Tk):
         
         # Calculated timestamp option for preview
         self.preview_use_timestamp_var = tk.BooleanVar(value=False)
-        timestamp_checkbox = ttk.Checkbutton(controls_frame, text="Use calculated timestamp",
+        timestamp_checkbox = ttk.Checkbutton(controls_frame, text="Show calculated timestamp",
                                            variable=self.preview_use_timestamp_var,
                                            command=self.update_preview)
         timestamp_checkbox.grid(row=0, column=5, sticky=tk.W, padx=(10, 0))
+        
+        # Second row for timespan controls
+        controls_frame.rowconfigure(1, weight=0)
+        
+        # Timespan enable checkbox
+        self.timespan_enabled_var = tk.BooleanVar(value=False)
+        timespan_checkbox = ttk.Checkbutton(controls_frame, text="Limit time range",
+                                           variable=self.timespan_enabled_var,
+                                           command=self.on_timespan_enabled_changed)
+        timespan_checkbox.grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        
+        # Start time entry
+        ttk.Label(controls_frame, text="Start:").grid(row=1, column=1, sticky=tk.W, padx=(10, 2), pady=(5, 0))
+        self.timespan_start_var = tk.StringVar()
+        self.timespan_start_entry = ttk.Entry(controls_frame, textvariable=self.timespan_start_var, 
+                                            width=12, state="disabled")
+        self.timespan_start_entry.grid(row=1, column=2, sticky=tk.W, padx=(0, 5), pady=(5, 0))
+        self.timespan_start_var.trace('w', self.on_timespan_changed)
+        
+        # End time entry
+        ttk.Label(controls_frame, text="End:").grid(row=1, column=3, sticky=tk.W, padx=(0, 2), pady=(5, 0))
+        self.timespan_end_var = tk.StringVar()
+        self.timespan_end_entry = ttk.Entry(controls_frame, textvariable=self.timespan_end_var, 
+                                          width=12, state="disabled")
+        self.timespan_end_entry.grid(row=1, column=4, sticky=tk.W, padx=(0, 5), pady=(5, 0))
+        self.timespan_end_var.trace('w', self.on_timespan_changed)
+        
+        # Refresh timespan button
+        self.timespan_refresh_button = ttk.Button(controls_frame, text="Reset", width=6,
+                                                command=self.refresh_timespan_suggestions,
+                                                state="disabled")
+        self.timespan_refresh_button.grid(row=1, column=5, sticky=tk.W, padx=(0, 8), pady=(5, 0))
+        
+        # Use for export checkbox
+        self.timespan_use_for_export_var = tk.BooleanVar(value=False)
+        export_checkbox = ttk.Checkbutton(controls_frame, text="Use for export",
+                                         variable=self.timespan_use_for_export_var,
+                                         state="disabled")
+        export_checkbox.grid(row=1, column=6, sticky="ew", padx=(0, 5), pady=(5, 0))
+        
+        # Store references to timespan widgets for enabling/disabling
+        self.timespan_widgets = [
+            self.timespan_start_entry,
+            self.timespan_end_entry, 
+            self.timespan_refresh_button,
+            export_checkbox
+        ]
         
         # Create matplotlib figure and canvas - compact size
         self.preview_figure = Figure(figsize=(8, 3), dpi=80, facecolor='white')
@@ -399,6 +454,26 @@ class TDMSViewer(tk.Tk):
                 x_data = list(range(len(channel_data)))
                 x_label = "Index"
             
+            # Apply timespan filtering if enabled
+            timespan_info = ""
+            if self.timespan_enabled_var.get():
+                original_count = len(x_data)
+                start_str = self.timespan_start_var.get().strip()
+                end_str = self.timespan_end_var.get().strip()
+                
+                try:
+                    x_data, channel_data = self.filter_data_by_timespan(x_data, channel_data)
+                    filtered_count = len(x_data)
+                    
+                    if filtered_count != original_count:
+                        timespan_info = f" (filtered {original_count} to {filtered_count} points)"
+                    elif filtered_count == 0:
+                        self.clear_preview(f"No data in timespan range: {start_str} to {end_str}")
+                        return
+                except Exception as e:
+                    # If filtering fails, show error but continue with unfiltered data
+                    timespan_info = f" (filter error: {str(e)[:30]}...)"
+            
             # Apply data sampling if needed
             if len(channel_data) > self.max_preview_points:
                 x_data, channel_data = self.sample_data(x_data, channel_data)
@@ -411,7 +486,7 @@ class TDMSViewer(tk.Tk):
             self.preview_axis.plot(x_data, channel_data, 'b-', linewidth=1, alpha=0.8)
             
             # Format plot
-            self.preview_axis.set_title(f"{channel_to_preview}{sample_info}")
+            self.preview_axis.set_title(f"{channel_to_preview}{timespan_info}{sample_info}")
             self.preview_axis.set_xlabel(x_label)
             self.preview_axis.set_ylabel("Value")
             self.preview_axis.grid(True, alpha=0.3)
@@ -431,7 +506,7 @@ class TDMSViewer(tk.Tk):
             self.preview_figure.tight_layout()
             self.preview_canvas.draw()
             
-            self.preview_status_var.set(f"Showing {len(channel_data)} points{sample_info}")
+            self.preview_status_var.set(f"Showing {len(channel_data)} points{timespan_info}{sample_info}")
             
         except Exception as e:
             self.clear_preview(f"Preview error: {str(e)}")
@@ -476,6 +551,345 @@ class TDMSViewer(tk.Tk):
         self.preview_figure.tight_layout()
         self.preview_canvas.draw()
         self.preview_status_var.set(message)
+    
+    def suggest_timespan_defaults(self):
+        """Suggest default timespan values based on current data"""
+        if not self.channels_data or not self.time_column:
+            return None, None
+        
+        try:
+            # Get time data for analysis
+            time_data = self.time_column
+            if not time_data or len(time_data) < 2:
+                return None, None
+            
+            # Determine if we're working with timestamps or numeric data
+            first_time = time_data[0]
+            last_time = time_data[-1]
+            total_points = len(time_data)
+            
+            if isinstance(first_time, datetime) and isinstance(last_time, datetime):
+                # Working with datetime objects
+                total_duration = last_time - first_time
+                # Suggest first 10% and last 90% as a reasonable middle range
+                start_offset = total_duration * 0.1
+                end_offset = total_duration * 0.9
+                
+                suggested_start = first_time + start_offset
+                suggested_end = first_time + end_offset
+                
+                return (suggested_start.strftime("%H:%M:%S"), 
+                       suggested_end.strftime("%H:%M:%S"))
+            
+            elif isinstance(first_time, (int, float)):
+                # Working with numeric data (seconds or indices)
+                total_range = last_time - first_time
+                # Suggest middle 80% of the data range
+                start_offset = total_range * 0.1
+                end_offset = total_range * 0.9
+                
+                suggested_start = first_time + start_offset
+                suggested_end = first_time + end_offset
+                
+                # Always return numeric values to match the data type
+                # This ensures type compatibility in filtering
+                return f"{suggested_start:.2f}", f"{suggested_end:.2f}"
+            
+        except Exception as e:
+            # Silently handle errors in timespan suggestion
+            return None, None
+        
+        return None, None
+    
+    def refresh_timespan_suggestions(self):
+        """Manually refresh timespan suggestions with current data"""
+        if not self.timespan_enabled_var.get():
+            return
+        
+        suggested_start, suggested_end = self.suggest_timespan_defaults()
+        
+        if suggested_start and suggested_end:
+            self.timespan_start_var.set(suggested_start)
+            self.timespan_end_var.set(suggested_end)
+            self.preview_status_var.set(f"Updated timespan: {suggested_start} to {suggested_end}")
+            
+            # Trigger preview update
+            if self.preview_enabled_var.get():
+                self.update_preview()
+        else:
+            self.preview_status_var.set("No data available for timespan suggestions")
+    
+    def on_timespan_enabled_changed(self):
+        """Handle timespan enable/disable checkbox change"""
+        enabled = self.timespan_enabled_var.get()
+        
+        # Enable/disable timespan widgets
+        state = "normal" if enabled else "disabled"
+        for widget in self.timespan_widgets:
+            widget.config(state=state)
+        
+        # Show helpful information when enabled
+        if enabled:
+            # Auto-populate with suggested defaults if fields are empty
+            if not self.timespan_start_var.get().strip() and not self.timespan_end_var.get().strip():
+                suggested_start, suggested_end = self.suggest_timespan_defaults()
+                
+                if suggested_start and suggested_end:
+                    self.timespan_start_var.set(suggested_start)
+                    self.timespan_end_var.set(suggested_end)
+                    self.preview_status_var.set(f"Auto-populated timespan: {suggested_start} to {suggested_end}")
+                else:
+                    formats = "Enter time range. Formats: 'YYYY-MM-DD HH:MM:SS', 'HH:MM:SS', 'MM:SS', or numeric seconds"
+                    self.preview_status_var.set(formats)
+            else:
+                # Fields already have values, just validate
+                self.validate_timespan_inputs()
+        else:
+            # Clear any validation messages when disabled
+            if "timespan" in self.preview_status_var.get().lower() or "format" in self.preview_status_var.get().lower():
+                self.preview_status_var.set("Preview ready")
+        
+        # Update preview if timespan is being enabled/disabled
+        if self.preview_enabled_var.get():
+            self.update_preview()
+    
+    def on_timespan_changed(self, *args):
+        """Handle timespan start/end time changes"""
+        if not self.timespan_enabled_var.get():
+            return
+        
+        # Cancel pending updates
+        if self._update_timer:
+            self.after_cancel(self._update_timer)
+        
+        # Validate inputs and provide feedback
+        self.validate_timespan_inputs()
+        
+        # Schedule preview update with debouncing
+        self._update_timer = self.after(500, self.update_preview_delayed)
+    
+    def validate_timespan_inputs(self):
+        """Validate timespan inputs and provide user feedback"""
+        start_str = self.timespan_start_var.get().strip()
+        end_str = self.timespan_end_var.get().strip()
+        
+        # Reset entry background colors to normal
+        self.timespan_start_entry.config(style="TEntry")
+        self.timespan_end_entry.config(style="TEntry")
+        
+        validation_message = ""
+        
+        # Parse inputs
+        start_value = self.parse_timespan_input(start_str) if start_str else None
+        end_value = self.parse_timespan_input(end_str) if end_str else None
+        
+        # Validate start input
+        if start_str and start_value is None:
+            try:
+                # Create error style if it doesn't exist
+                style = ttk.Style()
+                style.map("Error.TEntry", fieldbackground=[('!focus', '#ffcccc')])
+                self.timespan_start_entry.config(style="Error.TEntry")
+            except:
+                pass
+            validation_message += "Invalid start time format. "
+        
+        # Validate end input
+        if end_str and end_value is None:
+            try:
+                style = ttk.Style()
+                style.map("Error.TEntry", fieldbackground=[('!focus', '#ffcccc')])
+                self.timespan_end_entry.config(style="Error.TEntry")
+            except:
+                pass
+            validation_message += "Invalid end time format. "
+        
+        # Validate logical relationship
+        if start_value is not None and end_value is not None:
+            try:
+                # Compare values if they are the same type
+                if type(start_value) == type(end_value):
+                    comparison_valid = False
+                    if isinstance(start_value, datetime) and isinstance(end_value, datetime):
+                        comparison_valid = start_value >= end_value
+                    elif isinstance(start_value, (int, float)) and isinstance(end_value, (int, float)):
+                        comparison_valid = start_value >= end_value
+                    
+                    if comparison_valid:
+                        validation_message += "Start time must be before end time. "
+                        try:
+                            style = ttk.Style()
+                            style.map("Error.TEntry", fieldbackground=[('!focus', '#ffdddd')])
+                            self.timespan_start_entry.config(style="Error.TEntry")
+                            self.timespan_end_entry.config(style="Error.TEntry")
+                        except:
+                            pass
+                else:
+                    # Different types - note this for user
+                    validation_message += "Start and end times have different formats. "
+            except Exception:
+                # If comparison fails, just note it
+                validation_message += "Cannot compare start and end times. "
+        
+        # Update preview status with validation info
+        if validation_message:
+            self.preview_status_var.set(f"Timespan validation: {validation_message.strip()}")
+        elif start_str or end_str:
+            # Show helpful format information
+            formats = "Formats: 'YYYY-MM-DD HH:MM:SS', 'HH:MM:SS', 'MM:SS', or numeric seconds"
+            self.preview_status_var.set(f"Timespan ready. {formats}")
+        
+        return len(validation_message) == 0
+    
+    def parse_timespan_input(self, timespan_str):
+        """Parse timespan input string to datetime object or numeric value"""
+        if not timespan_str.strip():
+            return None
+        
+        timespan_str = timespan_str.strip()
+        
+        # Try to parse as numeric value first (most common case for TDMS time data)
+        try:
+            numeric_value = float(timespan_str)
+            return numeric_value
+        except ValueError:
+            pass
+        
+        # Try to parse as time formats and convert to seconds
+        time_formats = [
+            "%H:%M:%S.%f",           # Time only with microseconds  
+            "%H:%M:%S",              # Time only
+            "%M:%S.%f",              # Minutes and seconds with microseconds
+            "%M:%S",                 # Minutes and seconds
+        ]
+        
+        for fmt in time_formats:
+            try:
+                time_obj = datetime.strptime(timespan_str, fmt).time()
+                # Convert to total seconds from midnight
+                total_seconds = time_obj.hour * 3600 + time_obj.minute * 60 + time_obj.second + time_obj.microsecond / 1000000
+                return total_seconds
+            except ValueError:
+                continue
+        
+        # Try to parse as full datetime formats
+        datetime_formats = [
+            "%Y-%m-%d %H:%M:%S.%f",  # Full timestamp with microseconds
+            "%Y-%m-%d %H:%M:%S",     # Full timestamp
+        ]
+        
+        for fmt in datetime_formats:
+            try:
+                return datetime.strptime(timespan_str, fmt)
+            except ValueError:
+                continue
+        
+        # Try to parse as numeric value (seconds, index, etc.)
+        try:
+            return float(timespan_str)
+        except ValueError:
+            pass
+        
+        return None
+    
+    def filter_data_by_timespan(self, x_data, y_data, start_value=None, end_value=None):
+        """Filter data arrays based on timespan values"""
+        if not x_data or not y_data or len(x_data) != len(y_data):
+            return x_data, y_data
+        
+        # Parse timespan inputs
+        if start_value is None:
+            start_str = self.timespan_start_var.get().strip()
+            start_value = self.parse_timespan_input(start_str) if start_str else None
+        
+        if end_value is None:
+            end_str = self.timespan_end_var.get().strip()
+            end_value = self.parse_timespan_input(end_str) if end_str else None
+        
+        if start_value is None and end_value is None:
+            return x_data, y_data
+        
+        # Convert x_data to comparable format
+        comparable_x = []
+        for x_val in x_data:
+            if isinstance(x_val, datetime):
+                comparable_x.append(x_val)
+            elif isinstance(x_val, (int, float)):
+                comparable_x.append(float(x_val))
+            else:
+                try:
+                    # Try to convert to float for numeric comparison
+                    comparable_x.append(float(x_val))
+                except (ValueError, TypeError):
+                    # If conversion fails, use index-based filtering
+                    comparable_x.append(float(len(comparable_x)))
+        
+        # Convert everything to numeric for simpler comparison
+        # This avoids complex type mixing issues
+        numeric_x = []
+        numeric_start = None
+        numeric_end = None
+        reference_time = None
+        
+        # Find reference time if we have datetime data
+        for x_val in comparable_x:
+            if isinstance(x_val, datetime):
+                reference_time = x_val
+                break
+        
+        # Convert x_data to numeric values
+        for x_val in comparable_x:
+            if isinstance(x_val, datetime) and reference_time:
+                # Convert datetime to seconds from first datetime
+                if x_val == reference_time:
+                    numeric_x.append(0.0)
+                else:
+                    numeric_x.append((x_val - reference_time).total_seconds())
+            elif isinstance(x_val, (int, float)):
+                numeric_x.append(float(x_val))
+            else:
+                # Fallback for unknown types - use index
+                numeric_x.append(float(len(numeric_x)))
+        
+        # Convert start/end values to numeric
+        if start_value is not None:
+            if isinstance(start_value, datetime) and reference_time:
+                numeric_start = (start_value - reference_time).total_seconds()
+            elif isinstance(start_value, (int, float)):
+                numeric_start = float(start_value)
+            else:
+                numeric_start = 0.0  # Default start
+        
+        if end_value is not None:
+            if isinstance(end_value, datetime) and reference_time:
+                numeric_end = (end_value - reference_time).total_seconds()
+            elif isinstance(end_value, (int, float)):
+                numeric_end = float(end_value)
+            else:
+                numeric_end = float('inf')  # Default end
+        
+        # Apply filtering with numeric comparisons
+        filtered_indices = []
+        for i, x_numeric in enumerate(numeric_x):
+            include = True
+            
+            if numeric_start is not None:
+                include = include and (x_numeric >= numeric_start)
+            
+            if numeric_end is not None:
+                include = include and (x_numeric <= numeric_end)
+            
+            if include:
+                filtered_indices.append(i)
+        
+        # Return filtered data
+        if not filtered_indices:
+            return [], []
+        
+        filtered_x = [x_data[i] for i in filtered_indices]
+        filtered_y = [y_data[i] for i in filtered_indices]
+        
+        return filtered_x, filtered_y
 
     def add_files(self):
         """Add TDMS files to the processing list"""
@@ -833,6 +1247,59 @@ class TDMSViewer(tk.Tk):
                         export_data[clean_name] = channel_info['data']
                         break
             
+            # Apply timespan filtering if enabled and "Use for Export" is checked
+            export_info = ""
+            if (hasattr(self, 'timespan_enabled_var') and self.timespan_enabled_var.get() and 
+                hasattr(self, 'timespan_use_for_export_var') and self.timespan_use_for_export_var.get()):
+                
+                try:
+                    # Get the reference time data for filtering
+                    reference_time_data = None
+                    if self.time_column is not None:
+                        reference_time_data = self.time_column
+                    elif self.include_timestamp_var.get() and "Calculated_Timestamp" in export_data:
+                        # Convert timestamp strings back to datetime objects for filtering
+                        reference_time_data = []
+                        for ts_str in export_data["Calculated_Timestamp"]:
+                            if ts_str and not ts_str.startswith("Invalid"):
+                                try:
+                                    dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S.%f")
+                                    reference_time_data.append(dt)
+                                except ValueError:
+                                    dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+                                    reference_time_data.append(dt)
+                            else:
+                                reference_time_data.append(None)
+                    
+                    if reference_time_data:
+                        # Create a dummy channel data list to get indices
+                        dummy_data = list(range(len(reference_time_data)))
+                        filtered_time, filtered_dummy = self.filter_data_by_timespan(reference_time_data, dummy_data)
+                        
+                        if len(filtered_dummy) > 0:
+                            # Get the indices of filtered data
+                            filtered_indices = filtered_dummy
+                            original_count = len(reference_time_data)
+                            
+                            # Apply filtering to all export data columns
+                            filtered_export_data = {}
+                            for column_name, column_data in export_data.items():
+                                if len(column_data) == original_count:
+                                    filtered_export_data[column_name] = [column_data[i] for i in filtered_indices]
+                                else:
+                                    # Keep data as-is if length doesn't match
+                                    filtered_export_data[column_name] = column_data
+                            
+                            export_data = filtered_export_data
+                            export_info = f" (filtered to timespan: {len(filtered_indices)} of {original_count} points)"
+                        else:
+                            # No data in timespan - warn user but continue with full export
+                            export_info = " (Warning: No data in specified timespan - exporting all data)"
+                            
+                except Exception as e:
+                    # If filtering fails, continue with unfiltered export but warn user
+                    export_info = f" (Timespan filtering failed: {str(e)[:50]}... - exporting all data)"
+            
             # Create DataFrame and export
             df = pd.DataFrame(export_data)
             df.to_csv(output_file, index=False)
@@ -841,8 +1308,8 @@ class TDMSViewer(tk.Tk):
             self.save_last_selection()
             
             messagebox.showinfo("Export Complete", 
-                              f"Successfully exported {len(export_data)} columns to:\n{output_file}")
-            self.status_var.set(f"Export complete - {len(export_data)} columns saved")
+                              f"Successfully exported {len(export_data)} columns to:\n{output_file}{export_info}")
+            self.status_var.set(f"Export complete - {len(export_data)} columns saved{export_info}")
             
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export CSV:\n{str(e)}")
@@ -870,9 +1337,14 @@ class TDMSViewer(tk.Tk):
                 "include_timestamp_column": self.include_timestamp_var.get(),
                 "include_group_names": self.include_group_names_var.get(),
                 "last_import_directory": current_settings.get("last_import_directory", os.getcwd()),
-                "preview_enabled": getattr(self, 'preview_enabled_var', tk.BooleanVar()).get(),
+
                 "max_preview_points": getattr(self, 'max_preview_points', 10000),
-                "preview_channel": getattr(self, 'preview_channel_var', tk.StringVar()).get()
+                "preview_channel": getattr(self, 'preview_channel_var', tk.StringVar()).get(),
+                "preview_use_timestamp": getattr(self, 'preview_use_timestamp_var', tk.BooleanVar()).get(),
+                "timespan_enabled": getattr(self, 'timespan_enabled_var', tk.BooleanVar()).get(),
+                "timespan_start": getattr(self, 'timespan_start_var', tk.StringVar()).get(),
+                "timespan_end": getattr(self, 'timespan_end_var', tk.StringVar()).get(),
+                "timespan_use_for_export": getattr(self, 'timespan_use_for_export_var', tk.BooleanVar()).get()
             }
             
             with open(self.settings_file, 'w') as f:
@@ -894,9 +1366,14 @@ class TDMSViewer(tk.Tk):
             include_time = settings.get("include_time_column", True)
             include_timestamp = settings.get("include_timestamp_column", False)
             include_group_names = settings.get("include_group_names", True)
-            preview_enabled = settings.get("preview_enabled", True)
+
             max_preview_points = settings.get("max_preview_points", 10000)
             preview_channel = settings.get("preview_channel", "First Selected")
+            preview_use_timestamp = settings.get("preview_use_timestamp", False)
+            timespan_enabled = settings.get("timespan_enabled", False)
+            timespan_start = settings.get("timespan_start", "")
+            timespan_end = settings.get("timespan_end", "")
+            timespan_use_for_export = settings.get("timespan_use_for_export", False)
             
             # Apply time column setting
             self.include_time_var.set(include_time)
@@ -908,13 +1385,30 @@ class TDMSViewer(tk.Tk):
             self.include_group_names_var.set(include_group_names)
             
             # Apply preview settings
-            if hasattr(self, 'preview_enabled_var'):
-                self.preview_enabled_var.set(preview_enabled)
+            # Preview enabled always defaults to False - not saved in settings
             if hasattr(self, 'max_preview_points'):
                 self.max_preview_points = max_preview_points
                 self.sample_size_var.set(str(max_preview_points))
             if hasattr(self, 'preview_channel_var'):
                 self.preview_channel_var.set(preview_channel)
+            if hasattr(self, 'preview_use_timestamp_var'):
+                self.preview_use_timestamp_var.set(preview_use_timestamp)
+            
+            # Apply timespan settings
+            if hasattr(self, 'timespan_enabled_var'):
+                self.timespan_enabled_var.set(timespan_enabled)
+            if hasattr(self, 'timespan_start_var'):
+                self.timespan_start_var.set(timespan_start)
+            if hasattr(self, 'timespan_end_var'):
+                self.timespan_end_var.set(timespan_end)
+            if hasattr(self, 'timespan_use_for_export_var'):
+                self.timespan_use_for_export_var.set(timespan_use_for_export)
+            
+            # Update timespan widget states based on loaded settings
+            if hasattr(self, 'timespan_widgets') and hasattr(self, 'timespan_enabled_var'):
+                state = "normal" if self.timespan_enabled_var.get() else "disabled"
+                for widget in self.timespan_widgets:
+                    widget.config(state=state)
             
             # Apply channel selection
             for channel_name in last_channels:
@@ -931,6 +1425,13 @@ class TDMSViewer(tk.Tk):
             if last_channels:
                 restored_count = self.selected_listbox.size()
                 self.status_var.set(f"Restored {restored_count} previously selected channels")
+                
+                # Update preview channel options after loading selection
+                self.update_preview_channel_options()
+                
+                # Trigger preview update if preview is enabled
+                if hasattr(self, 'preview_enabled_var') and self.preview_enabled_var.get():
+                    self.update_preview()
                 
         except Exception as e:
             print(f"Warning: Could not load last selection: {e}")
