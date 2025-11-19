@@ -5,12 +5,21 @@ from datetime import datetime, timedelta
 from nptdms import TdmsFile
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends._backend_tk import NavigationToolbar2Tk
+from matplotlib.figure import Figure
+import matplotlib.dates as mdates
+from matplotlib.ticker import MaxNLocator
+import threading
+import queue
 
 class TDMSViewer(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("TDMS Channel Selector & CSV Converter v1.1.0")
-        self.geometry("900x700")
+        self.title("TDMS Channel Selector & CSV Converter v1.2.0-dev")
+        self.geometry("1200x1000")
         self.resizable(True, True)
         
         # Initialize variables
@@ -20,6 +29,12 @@ class TDMSViewer(tk.Tk):
         self.time_column = None
         self.time_column_name = None
         self.settings_file = os.path.join(os.getcwd(), "last_selection.json")
+        
+        # Preview pane variables
+        self.preview_enabled = True
+        self.max_preview_points = 10000
+        self._update_timer = None
+        self.preview_queue = queue.Queue()
         
         self.create_widgets()
     
@@ -31,12 +46,13 @@ class TDMSViewer(tk.Tk):
         # Configure grid weights for resizing
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(2, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=3)  # Channel selection gets good space
+        main_frame.rowconfigure(2, weight=1)  # Preview pane gets minimal space
         
         # File selection section
         file_frame = ttk.LabelFrame(main_frame, text="File Selection", padding="5")
-        file_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+        file_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         file_frame.columnconfigure(1, weight=1)
         
         # File selection buttons
@@ -68,11 +84,13 @@ class TDMSViewer(tk.Tk):
         ttk.Button(files_list_frame, text="Remove Selected", command=self.remove_selected_files).grid(row=2, column=0, sticky=tk.W, pady=(2, 0))
         
         # Channel selection section
-        channels_frame = ttk.LabelFrame(main_frame, text="Channel Selection", padding="5")
-        channels_frame.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(0, 10))
+        channels_frame = ttk.LabelFrame(main_frame, text="Channel Selection", padding="6")
+        channels_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 5), ipady=8)
         channels_frame.columnconfigure(0, weight=1)
         channels_frame.columnconfigure(2, weight=1)
         channels_frame.rowconfigure(2, weight=1)
+        # Set compact minimum height
+        channels_frame.configure(height=280)
         
         # Available channels
         ttk.Label(channels_frame, text="Available Channels").grid(row=0, column=0, pady=(0, 5))
@@ -97,21 +115,24 @@ class TDMSViewer(tk.Tk):
         available_frame.columnconfigure(0, weight=1)
         available_frame.rowconfigure(0, weight=1)
         
-        self.available_listbox = tk.Listbox(available_frame, selectmode=tk.EXTENDED)
+        self.available_listbox = tk.Listbox(available_frame, selectmode=tk.EXTENDED, height=6)
         self.available_listbox.grid(row=0, column=0, sticky="nsew")
+        
+        # Add placeholder text so frame is visible even without TDMS files
+        self.available_listbox.insert(tk.END, "No TDMS files loaded - Add files to see channels")
         
         available_scrollbar = ttk.Scrollbar(available_frame, orient="vertical", command=self.available_listbox.yview)
         available_scrollbar.grid(row=0, column=1, sticky="ns")
         self.available_listbox.configure(yscrollcommand=available_scrollbar.set)
         
-        # Control buttons
+        # Control buttons - centered in the middle
         button_frame = ttk.Frame(channels_frame)
-        button_frame.grid(row=2, column=1, padx=10)
+        button_frame.grid(row=2, column=1, padx=10, sticky="")
         
-        ttk.Button(button_frame, text="Add >>", command=self.add_channels).pack(pady=2)
-        ttk.Button(button_frame, text="Add All", command=self.add_all_channels).pack(pady=2)
-        ttk.Button(button_frame, text="<< Remove", command=self.remove_channels).pack(pady=2)
-        ttk.Button(button_frame, text="Remove All", command=self.remove_all_channels).pack(pady=2)
+        ttk.Button(button_frame, text="Add >>", command=self.add_channels).pack(pady=3)
+        ttk.Button(button_frame, text="Add All", command=self.add_all_channels).pack(pady=3)
+        ttk.Button(button_frame, text="<< Remove", command=self.remove_channels).pack(pady=3)
+        ttk.Button(button_frame, text="Remove All", command=self.remove_all_channels).pack(pady=3)
         
         # Selected channels
         ttk.Label(channels_frame, text="Selected Channels").grid(row=0, column=2, pady=(0, 5))
@@ -122,16 +143,25 @@ class TDMSViewer(tk.Tk):
         selected_frame.columnconfigure(0, weight=1)
         selected_frame.rowconfigure(0, weight=1)
         
-        self.selected_listbox = tk.Listbox(selected_frame, selectmode=tk.EXTENDED)
+        self.selected_listbox = tk.Listbox(selected_frame, selectmode=tk.EXTENDED, height=6)
         self.selected_listbox.grid(row=0, column=0, sticky="nsew")
+        
+        # Add placeholder text so frame is visible
+        self.selected_listbox.insert(tk.END, "Selected channels will appear here")
         
         selected_scrollbar = ttk.Scrollbar(selected_frame, orient="vertical", command=self.selected_listbox.yview)
         selected_scrollbar.grid(row=0, column=1, sticky="ns")
         self.selected_listbox.configure(yscrollcommand=selected_scrollbar.set)
         
+        # Bind selection events for preview updates
+        self.selected_listbox.bind('<<ListboxSelect>>', self.on_selection_changed)
+        
+        # Create preview pane under channel selection
+        self.create_preview_pane(main_frame)
+        
         # Export section
         export_frame = ttk.LabelFrame(main_frame, text="Export Options", padding="5")
-        export_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+        export_frame.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         export_frame.columnconfigure(0, weight=1)
         
         # Include time column option
@@ -157,9 +187,295 @@ class TDMSViewer(tk.Tk):
         # Status bar
         self.status_var = tk.StringVar(value="Ready - Please select a TDMS file")
         status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN)
-        status_bar.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        status_bar.grid(row=4, column=0, sticky="ew", pady=(10, 0))
 
+    def create_preview_pane(self, parent):
+        """Create the signal preview pane with matplotlib integration"""
+        # Ensure matplotlib uses proper backend for tkinter
+        import matplotlib
+        matplotlib.use('TkAgg')
+        
+        # Preview pane label frame - compact padding
+        preview_frame = ttk.LabelFrame(parent, text="Signal Preview", padding="3")
+        preview_frame.grid(row=2, column=0, sticky="nsew", pady=(0, 5))
+        preview_frame.columnconfigure(0, weight=1)
+        preview_frame.rowconfigure(1, weight=1)
+        
+        # Preview controls
+        controls_frame = ttk.Frame(preview_frame)
+        controls_frame.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        controls_frame.columnconfigure(2, weight=1)
+        
+        # Preview enable/disable checkbox
+        self.preview_enabled_var = tk.BooleanVar(value=True)
+        preview_checkbox = ttk.Checkbutton(controls_frame, text="Enable Preview", 
+                                         variable=self.preview_enabled_var,
+                                         command=self.toggle_preview)
+        preview_checkbox.grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        
+        # Channel selection for preview
+        ttk.Label(controls_frame, text="Channel:").grid(row=0, column=1, sticky=tk.W, padx=(0, 5))
+        self.preview_channel_var = tk.StringVar(value="First Selected")
+        self.preview_channel_combo = ttk.Combobox(controls_frame, textvariable=self.preview_channel_var,
+                                                state="readonly", width=25)
+        self.preview_channel_combo.grid(row=0, column=2, sticky="ew", padx=(0, 10))
+        self.preview_channel_combo.bind('<<ComboboxSelected>>', self.on_preview_channel_changed)
+        
+        # Sample size control
+        ttk.Label(controls_frame, text="Max Points:").grid(row=0, column=3, sticky=tk.W, padx=(0, 5))
+        self.sample_size_var = tk.StringVar(value="10000")
+        sample_entry = ttk.Entry(controls_frame, textvariable=self.sample_size_var, width=8)
+        sample_entry.grid(row=0, column=4, sticky=tk.W)
+        sample_entry.bind('<Return>', self.on_sample_size_changed)
+        
+        # Calculated timestamp option for preview
+        self.preview_use_timestamp_var = tk.BooleanVar(value=False)
+        timestamp_checkbox = ttk.Checkbutton(controls_frame, text="Use calculated timestamp",
+                                           variable=self.preview_use_timestamp_var,
+                                           command=self.update_preview)
+        timestamp_checkbox.grid(row=0, column=5, sticky=tk.W, padx=(10, 0))
+        
+        # Create matplotlib figure and canvas - compact size
+        self.preview_figure = Figure(figsize=(8, 3), dpi=80, facecolor='white')
+        self.preview_axis = self.preview_figure.add_subplot(111)
+        self.preview_axis.set_title("Select a channel to preview")
+        self.preview_axis.grid(True, alpha=0.3)
+        
+        # Create canvas and toolbar
+        canvas_frame = ttk.Frame(preview_frame)
+        canvas_frame.grid(row=1, column=0, sticky="nsew")
+        canvas_frame.columnconfigure(0, weight=1)
+        canvas_frame.rowconfigure(0, weight=1)
+        
+        self.preview_canvas = FigureCanvasTkAgg(self.preview_figure, canvas_frame)
+        self.preview_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+        
+        # Navigation toolbar
+        toolbar_frame = ttk.Frame(preview_frame)
+        toolbar_frame.grid(row=2, column=0, sticky="ew", pady=(5, 0))
+        
+        self.preview_toolbar = NavigationToolbar2Tk(self.preview_canvas, toolbar_frame)
+        self.preview_toolbar.update()
+        
+        # Status label for preview
+        self.preview_status_var = tk.StringVar(value="Preview ready")
+        preview_status = ttk.Label(preview_frame, textvariable=self.preview_status_var, 
+                                 font=('TkDefaultFont', 8))
+        preview_status.grid(row=3, column=0, sticky="ew", pady=(2, 0))
 
+    def toggle_preview(self):
+        """Toggle preview pane on/off"""
+        if self.preview_enabled_var.get():
+            self.update_preview()
+        else:
+            self.clear_preview()
+    
+    def on_selection_changed(self, event=None):
+        """Handle selection change in selected channels listbox"""
+        if not self.preview_enabled_var.get():
+            return
+            
+        # Cancel pending updates
+        if self._update_timer:
+            self.after_cancel(self._update_timer)
+        
+        # Update channel combo options
+        self.update_preview_channel_options()
+        
+        # Schedule preview update with debouncing
+        self._update_timer = self.after(300, self.update_preview_delayed)
+    
+    def on_preview_channel_changed(self, event=None):
+        """Handle preview channel selection change"""
+        if self.preview_enabled_var.get():
+            self.update_preview()
+    
+    def on_sample_size_changed(self, event=None):
+        """Handle sample size change"""
+        try:
+            new_size = int(self.sample_size_var.get())
+            if new_size > 0:
+                self.max_preview_points = new_size
+                if self.preview_enabled_var.get():
+                    self.update_preview()
+        except ValueError:
+            # Reset to current value if invalid
+            self.sample_size_var.set(str(self.max_preview_points))
+    
+    def update_preview_channel_options(self):
+        """Update the channel dropdown with currently selected channels"""
+        selected_channels = []
+        for i in range(self.selected_listbox.size()):
+            selected_channels.append(self.selected_listbox.get(i))
+        
+        # Add special options
+        options = ["First Selected", "Last Selected"]
+        options.extend(selected_channels)
+        
+        self.preview_channel_combo['values'] = options
+        
+        # Keep current selection if still valid, otherwise reset to first
+        current = self.preview_channel_var.get()
+        if current not in options and options:
+            self.preview_channel_var.set(options[0])
+    
+    def update_preview_delayed(self):
+        """Delayed preview update to avoid excessive calls"""
+        self._update_timer = None
+        self.update_preview()
+    
+    def update_preview(self):
+        """Update the preview plot with selected channel data"""
+        if not self.preview_enabled_var.get() or not self.channels_data:
+            return
+        
+        try:
+            # Get selected channel for preview
+            channel_to_preview = self.get_preview_channel()
+            if not channel_to_preview:
+                self.clear_preview("No channels selected")
+                return
+            
+            # Find channel data
+            channel_data = None
+            for channel_id, channel_info in self.channels_data.items():
+                if channel_info['display_name'] == channel_to_preview:
+                    channel_data = channel_info['data']
+                    break
+            
+            if channel_data is None:
+                self.clear_preview("Channel data not found")
+                return
+            
+            # Prepare time/index data
+            if self.preview_use_timestamp_var.get():
+                # Use calculated timestamp if requested and available
+                timestamp_data = self.create_timestamp_column()
+                if timestamp_data and len(timestamp_data) == len(channel_data):
+                    try:
+                        # Convert timestamp strings to datetime objects for plotting
+                        x_data = []
+                        for ts_str in timestamp_data:
+                            if ts_str and not ts_str.startswith("Invalid"):
+                                try:
+                                    dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S.%f")
+                                    x_data.append(dt)
+                                except ValueError:
+                                    # Try without microseconds
+                                    dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+                                    x_data.append(dt)
+                            else:
+                                x_data.append(None)
+                        
+                        # Remove None values and corresponding channel data
+                        valid_indices = [i for i, x in enumerate(x_data) if x is not None]
+                        if valid_indices:
+                            x_data = [x_data[i] for i in valid_indices]
+                            channel_data = [channel_data[i] for i in valid_indices]
+                            x_label = "Calculated Timestamp"
+                        else:
+                            raise ValueError("No valid timestamps found")
+                            
+                    except Exception as e:
+                        # Fallback if timestamp conversion fails
+                        if self.time_column and len(self.time_column) == len(channel_data):
+                            x_data = self.time_column
+                            x_label = self.time_column_name or "Time"
+                        else:
+                            x_data = list(range(len(channel_data)))
+                            x_label = "Index (Timestamp conversion failed)"
+                else:
+                    # Fallback to regular time or index
+                    if self.time_column and len(self.time_column) == len(channel_data):
+                        x_data = self.time_column
+                        x_label = self.time_column_name or "Time"
+                    else:
+                        x_data = list(range(len(channel_data)))
+                        x_label = "Index (Timestamp not available)"
+            elif self.time_column and len(self.time_column) == len(channel_data):
+                x_data = self.time_column
+                x_label = self.time_column_name or "Time"
+            else:
+                x_data = list(range(len(channel_data)))
+                x_label = "Index"
+            
+            # Apply data sampling if needed
+            if len(channel_data) > self.max_preview_points:
+                x_data, channel_data = self.sample_data(x_data, channel_data)
+                sample_info = f" (sampled to {len(channel_data)} points)"
+            else:
+                sample_info = ""
+            
+            # Clear and plot
+            self.preview_axis.clear()
+            self.preview_axis.plot(x_data, channel_data, 'b-', linewidth=1, alpha=0.8)
+            
+            # Format plot
+            self.preview_axis.set_title(f"{channel_to_preview}{sample_info}")
+            self.preview_axis.set_xlabel(x_label)
+            self.preview_axis.set_ylabel("Value")
+            self.preview_axis.grid(True, alpha=0.3)
+            
+            # Format x-axis for timestamps
+            if x_label == "Calculated Timestamp" and len(x_data) > 0:
+                self.preview_axis.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+                self.preview_axis.xaxis.set_major_locator(MaxNLocator(6))
+                # Rotate labels for better readability  
+                for label in self.preview_axis.xaxis.get_majorticklabels():
+                    label.set_rotation(45)
+                    label.set_horizontalalignment('right')
+            
+            # Auto-scale and refresh
+            self.preview_axis.relim()
+            self.preview_axis.autoscale()
+            self.preview_figure.tight_layout()
+            self.preview_canvas.draw()
+            
+            self.preview_status_var.set(f"Showing {len(channel_data)} points{sample_info}")
+            
+        except Exception as e:
+            self.clear_preview(f"Preview error: {str(e)}")
+    
+    def get_preview_channel(self):
+        """Get the channel name to preview based on current selection"""
+        selected_count = self.selected_listbox.size()
+        if selected_count == 0:
+            return None
+        
+        choice = self.preview_channel_var.get()
+        
+        if choice == "First Selected":
+            return self.selected_listbox.get(0)
+        elif choice == "Last Selected":
+            return self.selected_listbox.get(selected_count - 1)
+        else:
+            # Specific channel selected
+            return choice
+    
+    def sample_data(self, x_data, y_data):
+        """Apply intelligent sampling to reduce data points while preserving characteristics"""
+        if len(y_data) <= self.max_preview_points:
+            return x_data, y_data
+        
+        # Calculate sampling step
+        step = len(y_data) / self.max_preview_points
+        
+        # Use numpy for efficient sampling
+        indices = np.linspace(0, len(y_data) - 1, self.max_preview_points, dtype=int)
+        
+        sampled_x = [x_data[i] for i in indices]
+        sampled_y = [y_data[i] for i in indices]
+        
+        return sampled_x, sampled_y
+    
+    def clear_preview(self, message="Preview cleared"):
+        """Clear the preview plot and show message"""
+        self.preview_axis.clear()
+        self.preview_axis.set_title(message)
+        self.preview_axis.grid(True, alpha=0.3)
+        self.preview_figure.tight_layout()
+        self.preview_canvas.draw()
+        self.preview_status_var.set(message)
 
     def add_files(self):
         """Add TDMS files to the processing list"""
@@ -221,7 +537,12 @@ class TDMSViewer(tk.Tk):
         self.selected_listbox.delete(0, tk.END)
         self.all_channels.clear()
         
-        # Disable export button
+        # Restore placeholder text
+        self.available_listbox.insert(tk.END, "No TDMS files loaded - Add files to see channels")
+        self.selected_listbox.insert(tk.END, "Selected channels will appear here")
+        
+        # Update preview channel options and disable export button
+        self.update_preview_channel_options()
         self.export_button.config(state=tk.DISABLED)
         
         self.status_var.set("All files cleared")
@@ -325,6 +646,9 @@ class TDMSViewer(tk.Tk):
         # Load and apply last selection if available
         self.load_last_selection()
         
+        # Update preview channel options
+        self.update_preview_channel_options()
+        
         # Enable export button if channels are available
         if self.channels_data:
             self.export_button.config(state=tk.NORMAL)
@@ -347,6 +671,9 @@ class TDMSViewer(tk.Tk):
                 self.selected_listbox.insert(tk.END, item_text)
                 
         self.update_status()
+        # Update preview channel options and trigger preview update
+        self.update_preview_channel_options()
+        self.update_preview()
         
     def add_all_channels(self):
         """Add all available channels to selected list"""
@@ -359,6 +686,9 @@ class TDMSViewer(tk.Tk):
             self.selected_listbox.insert(tk.END, item_text)
             
         self.update_status()
+        # Update preview channel options and trigger preview update
+        self.update_preview_channel_options()
+        self.update_preview()
         
     def remove_channels(self):
         """Remove selected channels from selected list"""
@@ -371,11 +701,17 @@ class TDMSViewer(tk.Tk):
             self.selected_listbox.delete(index)
             
         self.update_status()
+        # Update preview channel options and trigger preview update
+        self.update_preview_channel_options()
+        self.update_preview()
         
     def remove_all_channels(self):
         """Remove all channels from selected list"""
         self.selected_listbox.delete(0, tk.END)
         self.update_status()
+        # Update preview channel options and trigger preview update
+        self.update_preview_channel_options()
+        self.update_preview()
         
     def update_status(self):
         """Update status bar with current selection info"""
@@ -533,7 +869,10 @@ class TDMSViewer(tk.Tk):
                 "include_time_column": self.include_time_var.get(),
                 "include_timestamp_column": self.include_timestamp_var.get(),
                 "include_group_names": self.include_group_names_var.get(),
-                "last_import_directory": current_settings.get("last_import_directory", os.getcwd())
+                "last_import_directory": current_settings.get("last_import_directory", os.getcwd()),
+                "preview_enabled": getattr(self, 'preview_enabled_var', tk.BooleanVar()).get(),
+                "max_preview_points": getattr(self, 'max_preview_points', 10000),
+                "preview_channel": getattr(self, 'preview_channel_var', tk.StringVar()).get()
             }
             
             with open(self.settings_file, 'w') as f:
@@ -555,6 +894,9 @@ class TDMSViewer(tk.Tk):
             include_time = settings.get("include_time_column", True)
             include_timestamp = settings.get("include_timestamp_column", False)
             include_group_names = settings.get("include_group_names", True)
+            preview_enabled = settings.get("preview_enabled", True)
+            max_preview_points = settings.get("max_preview_points", 10000)
+            preview_channel = settings.get("preview_channel", "First Selected")
             
             # Apply time column setting
             self.include_time_var.set(include_time)
@@ -564,6 +906,15 @@ class TDMSViewer(tk.Tk):
             
             # Apply group names setting
             self.include_group_names_var.set(include_group_names)
+            
+            # Apply preview settings
+            if hasattr(self, 'preview_enabled_var'):
+                self.preview_enabled_var.set(preview_enabled)
+            if hasattr(self, 'max_preview_points'):
+                self.max_preview_points = max_preview_points
+                self.sample_size_var.set(str(max_preview_points))
+            if hasattr(self, 'preview_channel_var'):
+                self.preview_channel_var.set(preview_channel)
             
             # Apply channel selection
             for channel_name in last_channels:
