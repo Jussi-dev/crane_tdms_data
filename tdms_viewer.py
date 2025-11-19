@@ -18,7 +18,7 @@ import queue
 class TDMSViewer(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("TDMS Channel Selector & CSV Converter v1.3.0")
+        self.title("TDMS Channel Selector & CSV Converter v1.3.1")
         self.geometry("1200x1000")
         self.resizable(True, True)
         
@@ -553,7 +553,7 @@ class TDMSViewer(tk.Tk):
         self.preview_status_var.set(message)
     
     def suggest_timespan_defaults(self):
-        """Suggest default timespan values based on current data"""
+        """Suggest default timespan values showing the complete data range (0% to 100%)"""
         if not self.channels_data or not self.time_column:
             return None, None
         
@@ -570,26 +570,18 @@ class TDMSViewer(tk.Tk):
             
             if isinstance(first_time, datetime) and isinstance(last_time, datetime):
                 # Working with datetime objects
-                total_duration = last_time - first_time
-                # Suggest first 10% and last 90% as a reasonable middle range
-                start_offset = total_duration * 0.1
-                end_offset = total_duration * 0.9
-                
-                suggested_start = first_time + start_offset
-                suggested_end = first_time + end_offset
+                # Show complete data range from start to end (100% data visibility)
+                suggested_start = first_time
+                suggested_end = last_time
                 
                 return (suggested_start.strftime("%H:%M:%S"), 
                        suggested_end.strftime("%H:%M:%S"))
             
             elif isinstance(first_time, (int, float)):
                 # Working with numeric data (seconds or indices)
-                total_range = last_time - first_time
-                # Suggest middle 80% of the data range
-                start_offset = total_range * 0.1
-                end_offset = total_range * 0.9
-                
-                suggested_start = first_time + start_offset
-                suggested_end = first_time + end_offset
+                # Show complete data range from start to end (100% data visibility)
+                suggested_start = first_time
+                suggested_end = last_time
                 
                 # Always return numeric values to match the data type
                 # This ensures type compatibility in filtering
@@ -602,7 +594,7 @@ class TDMSViewer(tk.Tk):
         return None, None
     
     def refresh_timespan_suggestions(self):
-        """Manually refresh timespan suggestions with current data"""
+        """Reset timespan to show complete data range (0% to 100% of available data)"""
         if not self.timespan_enabled_var.get():
             return
         
@@ -611,7 +603,7 @@ class TDMSViewer(tk.Tk):
         if suggested_start and suggested_end:
             self.timespan_start_var.set(suggested_start)
             self.timespan_end_var.set(suggested_end)
-            self.preview_status_var.set(f"Updated timespan: {suggested_start} to {suggested_end}")
+            self.preview_status_var.set(f"Reset to full range: {suggested_start} to {suggested_end}")
             
             # Trigger preview update
             if self.preview_enabled_var.get():

@@ -1,4 +1,4 @@
-# TDMS Channel Selector & CSV Converter v1.3.0
+# TDMS Channel Selector & CSV Converter v1.3.1
 
 A powerful GUI application for viewing, analyzing, and exporting TDMS (Technical Data Management Streaming) files with advanced preview and timespan filtering capabilities.
 
@@ -34,10 +34,10 @@ A powerful GUI application for viewing, analyzing, and exporting TDMS (Technical
 - **Data sampling**: Intelligent sampling for large datasets (configurable point limits)
 - **Full navigation**: Zoom, pan, and explore your data with integrated matplotlib toolbar
 
-### ⏱️ Timespan Controls (New in v1.3.0)
+### ⏱️ Timespan Controls
 - **Time range filtering**: Limit preview and export to specific time windows
 - **Flexible input formats**: Support for `HH:MM:SS`, `MM:SS`, and numeric seconds
-- **Smart auto-population**: Reset button suggests meaningful time ranges from your data
+- **Smart Reset button**: Shows complete data range (0% to 100%) for maximum data visibility
 - **Export integration**: Apply preview timespan to CSV exports via "Use for export" option
 - **Real-time validation**: Visual feedback for invalid time inputs with helpful format hints
 
@@ -120,8 +120,8 @@ crane_tdms_data/
 
 ## 🏷️ Version Information
 
-**Current Stable**: v1.0.0  
-**Development Branch**: feature/multi-file-support
+**Current Stable**: v1.3.1  
+**Previous Release**: v1.3.0
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history and upcoming features.
 

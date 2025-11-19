@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [1.3.1] - 2025-11-19
+
+### Changed
+- **Reset Button Behavior**: Clarified that Reset button shows the complete data range (0% to 100%) for maximum data visibility
+- **Documentation**: Updated method comments and documentation to accurately reflect Reset button functionality
+
+### Fixed
+- **Documentation Accuracy**: Corrected all references to Reset button behavior in code comments and documentation
+
 ## [1.3.0] - 2025-11-19
 
 ### Added
