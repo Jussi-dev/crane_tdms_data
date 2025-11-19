@@ -51,14 +51,15 @@ A powerful GUI application for viewing, analyzing, and exporting TDMS (Technical
 
 ### Prerequisites
 - Python 3.6 or higher
-- Required Python packages (see Installation)
+- tkinter (usually included with Python installations)
+- Required Python packages: pandas, nptdms, matplotlib, numpy
 
 ### Installation
 
 1. Clone or download this repository
 2. Install required packages:
    ```bash
-   pip install pandas nptdms
+   pip install pandas nptdms matplotlib numpy
    ```
 
 ### Usage
