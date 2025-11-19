@@ -1,6 +1,6 @@
-# TDMS Channel Selector & CSV Converter
+# TDMS Channel Selector & CSV Converter v1.3.0
 
-A user-friendly GUI application for selecting and exporting specific channels from TDMS (Technical Data Management Streaming) files to CSV format.
+A powerful GUI application for viewing, analyzing, and exporting TDMS (Technical Data Management Streaming) files with advanced preview and timespan filtering capabilities.
 
 ## 🚀 Features
 
@@ -27,6 +27,19 @@ A user-friendly GUI application for selecting and exporting specific channels fr
 - Saves export preferences between sessions  
 - Recalls last used import directory
 - Maintains settings for multi-file workflows
+
+### 📈 Signal Preview Pane
+- **Real-time signal plotting**: Interactive matplotlib-based preview of selected channels
+- **Multiple time formats**: Support for regular time tracks and calculated timestamps
+- **Data sampling**: Intelligent sampling for large datasets (configurable point limits)
+- **Full navigation**: Zoom, pan, and explore your data with integrated matplotlib toolbar
+
+### ⏱️ Timespan Controls (New in v1.3.0)
+- **Time range filtering**: Limit preview and export to specific time windows
+- **Flexible input formats**: Support for `HH:MM:SS`, `MM:SS`, and numeric seconds
+- **Smart auto-population**: Reset button suggests meaningful time ranges from your data
+- **Export integration**: Apply preview timespan to CSV exports via "Use for export" option
+- **Real-time validation**: Visual feedback for invalid time inputs with helpful format hints
 
 ### ⚡ User Experience
 - Clean, resizable interface optimized for multi-file workflows
@@ -148,10 +161,34 @@ git checkout main
 - Very large datasets from multiple files may consume significant memory
 - Files should have consistent channel structures for optimal merging
 
+## 📋 Version History
+
+### v1.3.0 (Current) - Timespan Controls
+- ✅ **Timespan filtering**: Comprehensive time range control for preview and export
+- ✅ **Smart auto-population**: Reset button with intelligent time range suggestions  
+- ✅ **Multiple time formats**: Support for `HH:MM:SS`, `MM:SS`, and numeric inputs
+- ✅ **Export integration**: Apply preview timespan to CSV exports
+- ✅ **Visual validation**: Real-time feedback for time input validation
+
+### v1.2.0 - Signal Preview Pane
+- ✅ **Interactive preview**: Matplotlib-based signal plotting with full navigation
+- ✅ **Channel selection**: Preview any selected channel individually
+- ✅ **Calculated timestamps**: Support for human-readable timestamp display
+- ✅ **Performance optimization**: Configurable sampling for large datasets
+
+### v1.1.0 - Multi-File Support  
+- ✅ **Multiple TDMS files**: Load and combine files chronologically
+- ✅ **Enhanced UI**: Improved file management and channel selection
+- ✅ **Settings persistence**: Save and restore user preferences
+
+### v1.0.0 - Initial Release
+- ✅ **Basic TDMS processing**: Single file channel selection and CSV export
+- ✅ **Core functionality**: Channel filtering, export options, timestamp calculation
+
 ## 🔮 Upcoming Features (Future Development)
 
 - Progress indicators for large multi-file operations
-- Memory optimization for very large datasets  
+- Memory optimization for very large datasets
 - Advanced file validation and compatibility checking
 - Custom data alignment options for mismatched time bases
 
