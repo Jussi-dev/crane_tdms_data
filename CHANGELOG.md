@@ -19,6 +19,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [1.3.0] - 2025-11-19
+
+### Added
+- **Timespan Controls**: Comprehensive time range filtering for preview and export operations
+- **Smart Auto-Population**: Reset button with intelligent time range suggestions based on data analysis
+- **Multiple Time Input Formats**: Support for `HH:MM:SS`, `MM:SS`, and numeric seconds input
+- **Export Integration**: "Use for export" option to apply preview timespan to CSV exports
+- **Real-time Validation**: Visual feedback for time input validation with helpful format hints
+- **Enhanced Preview Initialization**: Improved channel selection handling and auto-updates
+- **Settings Persistence**: Save and restore timespan preferences between sessions
+
+### Changed
+- **Preview Enabled State**: Always defaults to False at startup (no longer saved in settings)
+- **Button Labeling**: Changed "Auto" to "Reset" for better user clarity
+- **UI Layout**: Improved spacing and visibility of timespan controls
+- **Version**: Updated to v1.3.0 stable release
+
+### Fixed
+- **Preview Update Issues**: Fixed preview not showing after loading saved channel selections
+- **Type Handling**: Improved timespan filtering with better datetime/numeric type compatibility
+- **UI Responsiveness**: Better handling of timespan widget enable/disable states
+
+## [1.2.0] - 2025-11-18
+
+### Added
+- **Signal Preview Pane**: Interactive matplotlib-based signal plotting with full navigation
+- **Channel Selection for Preview**: Choose any selected channel for individual preview
+- **Calculated Timestamp Support**: Display human-readable timestamps in preview
+- **Data Sampling**: Intelligent sampling for large datasets with configurable point limits
+- **Preview Controls**: Enable/disable, channel selection, sample size, and timestamp options
+
+### Changed
+- **UI Layout**: Added preview pane with proper grid layout and resizing
+- **Performance**: Optimized for large dataset handling with sampling
+
 ## [1.1.0] - 2025-11-14
 
 ### Added
